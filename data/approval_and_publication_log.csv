@@ -1,0 +1,3 @@
+event_id,event_timestamp,question_id,draft_version,reviewer_id,approval_id,event_type,publication_status,detail
+EVT-001,2026-07-15T10:09:00+05:30,Q-RAG-001,v1,,,draft_created,not_published,"Synthetic seed draft entered review queue."
+EVT-002,2026-07-15T10:32:00+05:30,Q-RAG-008,v1,,,escalated,not_published,"Prompt-injection and approval-bypass attempt preserved as unapproved."

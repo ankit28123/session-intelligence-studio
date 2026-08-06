@@ -1,0 +1,9 @@
+pair_id,question_id_a,question_id_b,expected_relationship,rationale
+PAIR-001,Q-RAG-002,Q-RAG-003,must-link,"Same chunking concept, retrieval-quality objective, evidence, and answer logic."
+PAIR-002,Q-RAG-002,Q-RAG-004,must-link,"Same chunking concept and retrieval-quality decision objective."
+PAIR-003,Q-RAG-003,Q-RAG-004,must-link,"Same retrieval-quality cluster and common evidence requirement."
+PAIR-004,Q-RAG-002,Q-RAG-005,cannot-link,"Retrieval-quality and cost-efficiency objectives require different evidence."
+PAIR-005,Q-RAG-003,Q-RAG-005,cannot-link,"Retrieval precision and operating-cost questions need different answer logic."
+PAIR-006,Q-RAG-004,Q-RAG-005,cannot-link,"Universal quality setting and cost optimization are critical near-misses."
+PAIR-007,Q-RAG-001,Q-RAG-018,must-link,"Both ask when retrieval is preferable to fine-tuning for changing facts."
+PAIR-008,Q-RAG-002,Q-RAG-010,acceptable-either-way,"Both concern chunk design, but overlap has a narrower mechanism-specific intent."

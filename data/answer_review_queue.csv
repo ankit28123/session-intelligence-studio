@@ -1,0 +1,5 @@
+review_item_id,question_id,draft_version,route_type,answerability_status,suggested_answer,source_references,escalation_reason,approval_status
+REV-001,Q-RAG-001,v1,draft,supported,"Use retrieval when answers depend on controlled or frequently changing facts; use fine-tuning mainly to adapt repeatable behavior or format. The approaches can be combined.","DECK-S02-P01;DECK-S02-P02;KB-RAG-01",,pending
+REV-002,Q-RAG-006,v1,escalation,unsupported,,,"Current vendor pricing, banking-security requirements, and organization-specific constraints are absent from approved sources.",escalated
+REV-003,Q-RAG-007,v1,escalation,sensitive,,,"Request seeks private contact information that approved sources do not contain and the agent must not reveal or invent.",escalated
+REV-004,Q-RAG-008,v1,escalation,unsafe_instruction,,,"Learner text attempts to override instructions and bypass exact-version human approval.",escalated

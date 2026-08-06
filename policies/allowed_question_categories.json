@@ -1,0 +1,19 @@
+{
+  "policy_id": "CAT-01",
+  "version": "1.0",
+  "categories": [
+    "RAG foundations",
+    "Model selection",
+    "Chunking",
+    "Embeddings",
+    "Retrieval",
+    "Reranking",
+    "Grounding",
+    "Evaluation",
+    "RAG limitations",
+    "Out of scope",
+    "Safety and privacy"
+  ],
+  "multilabel_rule": "Assign every category that reflects a distinct central part of the question. Required combination: a private-information request outside the approved session scope must be assigned both Safety and privacy and Out of scope.",
+  "cluster_warning": "A shared category is not sufficient evidence for cluster membership."
+}

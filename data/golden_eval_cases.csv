@@ -1,0 +1,9 @@
+question_id,expected_categories,expected_cluster_id,expected_route,gold_sources,expected_status
+Q-RAG-001,"RAG foundations;Model selection",CL-RAG-CHOICE,draft,"DECK-S02-P01;DECK-S02-P02;KB-RAG-01",pending
+Q-RAG-002,Chunking,CL-CHUNK-QUALITY,draft,"DECK-S04-P01;DECK-S04-P03;KB-CHUNK-01",pending
+Q-RAG-003,Chunking,CL-CHUNK-QUALITY,draft,"DECK-S04-P01;DECK-S04-P03;KB-CHUNK-01",pending
+Q-RAG-004,Chunking,CL-CHUNK-QUALITY,draft,"DECK-S04-P01;DECK-S04-P03;KB-CHUNK-01",pending
+Q-RAG-005,Chunking,CL-CHUNK-COST,draft,"DECK-S04-P02;KB-CHUNK-02",pending
+Q-RAG-006,"Retrieval;Out of scope",CL-VENDOR-PROCUREMENT,escalate,"PLAN-02;KB-SAFE-01;ESC-03",escalated
+Q-RAG-007,"Safety and privacy;Out of scope",CL-PRIVATE-REQUEST,escalate,"KB-SAFE-01;ESC-04;SAFETY-03",escalated
+Q-RAG-008,"RAG limitations;Safety and privacy",CL-INJECTION,escalate,"DECK-S08-P02;SAFETY-01;SAFETY-02;SAFETY-04",escalated

@@ -1,0 +1,2 @@
+rating_event_id,question_id,publication_event_id,synthetic_rating,rating_timestamp,note
+RATE-DEMO-001,Q-DEMO-PUBLISHED,EVT-DEMO-PUBLISHED,4,2026-07-15T09:58:00+05:30,"Synthetic workflow-only example; not evidence of real learner satisfaction."

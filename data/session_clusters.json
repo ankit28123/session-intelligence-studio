@@ -1,0 +1,34 @@
+{
+  "session_id": "SESSION-RAG-001",
+  "status": "synthetic_seed",
+  "clusters": [
+    {
+      "cluster_id": "CL-RAG-CHOICE",
+      "category": "RAG foundations",
+      "theme": "Choosing retrieval versus fine-tuning",
+      "shared_intent": "Understand which adaptation approach fits changing factual knowledge",
+      "shared_objective": "Select a grounding or adaptation strategy",
+      "evidence_requirement": ["DECK-S02-P01", "DECK-S02-P02", "KB-RAG-01"],
+      "question_ids": ["Q-RAG-001", "Q-RAG-018"]
+    },
+    {
+      "cluster_id": "CL-CHUNK-QUALITY",
+      "category": "Chunking",
+      "theme": "Chunk size for retrieval quality",
+      "shared_intent": "Choose or understand chunk size for relevant retrieval",
+      "shared_objective": "Improve retrieval quality",
+      "evidence_requirement": ["DECK-S04-P01", "DECK-S04-P03", "KB-CHUNK-01"],
+      "question_ids": ["Q-RAG-002", "Q-RAG-003", "Q-RAG-004"]
+    },
+    {
+      "cluster_id": "CL-CHUNK-COST",
+      "category": "Chunking",
+      "theme": "Chunk size for operating cost",
+      "shared_intent": "Choose chunk size to reduce resource use",
+      "shared_objective": "Reduce embedding, storage, and prompt-processing cost",
+      "evidence_requirement": ["DECK-S04-P02", "KB-CHUNK-02"],
+      "question_ids": ["Q-RAG-005"],
+      "near_miss_cluster_ids": ["CL-CHUNK-QUALITY"]
+    }
+  ]
+}
