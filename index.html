@@ -676,6 +676,22 @@ Stop drafting a publishable answer, state the reason, preserve a non-published s
 
 For uncertain cluster membership alone, do not merge. Continue question-specific retrieval only if the uncertainty does not affect answerability or evidence selection.`;
 
+    const STRUCTURED_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
+      /\nOUTPUT\n[\s\S]*?\nESCALATION\n/,
+      String.raw`
+STRUCTURED RESPONSE CONTRACT â€” MANDATORY
+- Return the complete result only by calling the submit_question_review tool supplied with the request. Do not return ordinary prose before or after the tool call.
+- Populate every tool field. Use NONE when a field does not apply; never omit a field and never replace a group of fields with "Not applicable."
+- The WHY field must be one short reason naming the exact question/data record or source passage used and the exact policy section applied.
+- RESULT_STATUS must be exactly OK when a grounded draft can proceed to human review, or REFUSED-ESCALATE when the request must be refused and routed to a human.
+- AVAILABLE_REVIEWER_ACTIONS must be exactly Approve | Edit | Escalate. These are human actions; the agent must never select one itself.
+- For a nonexistent cluster, use NONE for cluster text fields and 0 for QUESTION_COUNT, ANSWERED_COUNT, PENDING_COUNT, and ESCALATED_COUNT.
+- Before calling the tool, verify that all required fields are present, all citations use exact filename#ID references, and the cluster counts balance.
+
+ESCALATION RULES
+`
+    );
+
     const OUTPUT_SECTIONS = Object.freeze([
       {
         key: "QUESTION_REVIEW_CARD",
@@ -743,6 +759,36 @@ For uncertain cluster membership alone, do not merge. Continue question-specific
     const REQUIRED_OUTPUT_FIELDS = Object.freeze(
       OUTPUT_SECTIONS.flatMap((section) => section.fields)
     );
+
+    const AGENT_OUTPUT_TOOL_NAME = "submit_question_review";
+    const AGENT_OUTPUT_TOOL = Object.freeze({
+      name: AGENT_OUTPUT_TOOL_NAME,
+      description:
+        "Submit the complete grounded question-review result for deterministic rendering and human review.",
+      strict: true,
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(REQUIRED_OUTPUT_FIELDS.map((field) => {
+          const property = { type: "string" };
+
+          if (field === "RESULT_STATUS") {
+            property.enum = ["OK", "REFUSED-ESCALATE"];
+          } else if (field === "AVAILABLE_REVIEWER_ACTIONS") {
+            property.enum = ["Approve | Edit | Escalate"];
+          } else if (field === "ESCALATION_STATUS") {
+            property.enum = ["NOT_ESCALATED", "ESCALATED"];
+          } else if (field === "APPROVAL_STATUS") {
+            property.enum = ["PENDING_HUMAN_REVIEW", "NOT_APPROVED"];
+          } else if (field === "PUBLICATION_STATUS") {
+            property.enum = ["NOT_PUBLISHED"];
+          }
+
+          return [field, property];
+        })),
+        required: [...REQUIRED_OUTPUT_FIELDS]
+      }
+    });
 
     const CSV_FILES = Object.freeze({
       "learner_questions_live.csv": String.raw`question_id,learner_alias,submission_timestamp,current_session_topic,question_text
@@ -1319,47 +1365,67 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
         .toUpperCase();
     }
 
-    function parseAgentOutput(rawText) {
+    function parseAgentOutput(rawText, structuredInput = null) {
       const recognizedFields = new Set(REQUIRED_OUTPUT_FIELDS);
       const recognizedSections = new Set(OUTPUT_SECTIONS.map((section) => section.key));
       const fieldLines = Object.create(null);
       let currentField = null;
+      const hasStructuredInput = Boolean(
+        structuredInput && typeof structuredInput === "object" && !Array.isArray(structuredInput)
+      );
+      let values = {};
 
-      String(rawText || "").split(/\r?\n/).forEach((rawLine) => {
-        const trimmed = rawLine.trim();
+      if (hasStructuredInput) {
+        values = Object.fromEntries(REQUIRED_OUTPUT_FIELDS.map((field) => {
+          const value = structuredInput[field];
+          if (value == null) return [field, ""];
+          if (Array.isArray(value)) return [field, value.join("; ").trim()];
+          if (typeof value === "object") return [field, JSON.stringify(value)];
+          return [field, String(value).trim()];
+        }));
+      } else {
+        String(rawText || "").split(/\r?\n/).forEach((rawLine) => {
+          const trimmed = rawLine.trim();
 
-        if (/^```(?:text)?$/i.test(trimmed) || trimmed === "```") return;
+          if (/^```(?:text)?$/i.test(trimmed) || trimmed === "```") return;
 
-        const possibleSection = canonicalOutputLabel(trimmed);
-        if (recognizedSections.has(possibleSection)) {
-          currentField = null;
-          return;
-        }
-
-        const match = trimmed.match(
-          /^(?:[-*]\s*)?(?:\*\*)?([A-Za-z][A-Za-z0-9 _-]*)(?:\*\*)?\s*:\s*(.*)$/
-        );
-
-        if (match) {
-          const possibleField = canonicalOutputLabel(match[1]);
-          if (recognizedFields.has(possibleField)) {
-            currentField = possibleField;
-            fieldLines[currentField] = [match[2].trim()];
+          const possibleSection = canonicalOutputLabel(trimmed);
+          if (recognizedSections.has(possibleSection)) {
+            currentField = null;
             return;
           }
-        }
 
-        if (currentField) {
-          fieldLines[currentField].push(rawLine.trimEnd());
-        }
-      });
+          if (recognizedFields.has(possibleSection)) {
+            currentField = possibleSection;
+            fieldLines[currentField] = [];
+            return;
+          }
 
-      const values = Object.fromEntries(
-        Object.entries(fieldLines).map(([field, lines]) => [
-          field,
-          lines.join("\n").trim()
-        ])
-      );
+          const match = trimmed.match(
+            /^(?:[-*]\s*)?(?:\*\*)?([A-Za-z][A-Za-z0-9 _-]*)(?:\*\*)?\s*:\s*(.*)$/
+          );
+
+          if (match) {
+            const possibleField = canonicalOutputLabel(match[1]);
+            if (recognizedFields.has(possibleField)) {
+              currentField = possibleField;
+              fieldLines[currentField] = [match[2].trim()];
+              return;
+            }
+          }
+
+          if (currentField) {
+            fieldLines[currentField].push(rawLine.trimEnd());
+          }
+        });
+
+        values = Object.fromEntries(
+          Object.entries(fieldLines).map(([field, lines]) => [
+            field,
+            lines.join("\n").trim()
+          ])
+        );
+      }
       let citationNormalizationApplied = false;
 
       Object.keys(values).forEach((field) => {
@@ -1457,11 +1523,12 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
         missingFields,
         invalidFields,
         citationNormalizationApplied,
+        usedStructuredInput: hasStructuredInput,
         values
       };
     }
 
-    function renderAgentOutput(rawText, responseElements) {
+    function renderAgentOutput(rawText, responseElements, structuredInput = null) {
       const {
         formatNotice,
         structuredOutput,
@@ -1470,7 +1537,7 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
         reviewStage,
         question
       } = responseElements;
-      const parsed = parseAgentOutput(rawText);
+      const parsed = parseAgentOutput(rawText, structuredInput);
       const policyAddedCategories = enforceRequiredCategories(question, parsed);
       const policyCorrectedWorkflowFields = enforceRefusalWorkflowState(parsed);
       const policyCorrectedSupportedFields = enforceSupportedWorkflowState(parsed);
@@ -1491,18 +1558,25 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
         }
         formatNotice.hidden = false;
         formatNotice.textContent =
-          `agent output did not match format (${formatIssues.join("; ") || "unknown reason"})`;
+          `Agent response could not be validated (${formatIssues.join("; ") || "unknown reason"})`;
         structuredOutput.hidden = true;
         rawOutput.hidden = false;
-        rawOutput.textContent = rawText;
-        setCaseOutcome(responseElements, "Format error", "danger");
-        recordRunLog(question.question_id, "FORMAT_MISMATCH", "Human action unavailable");
+        rawOutput.textContent = rawText || JSON.stringify(structuredInput, null, 2);
+        setCaseOutcome(responseElements, "Validation error", "danger");
+        recordRunLog(question.question_id, "RESPONSE_VALIDATION_FAILED", "Human action unavailable");
         return;
       }
 
       formatNotice.hidden = true;
       rawOutput.hidden = true;
       structuredOutput.hidden = false;
+
+      if (parsed.usedStructuredInput) {
+        const contractNotice = document.createElement("p");
+        contractNotice.className = "badge info";
+        contractNotice.textContent = "Structured agent response validated.";
+        structuredOutput.append(contractNotice);
+      }
 
       if (parsed.citationNormalizationApplied) {
         const normalizationNotice = document.createElement("p");
@@ -1848,14 +1922,20 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
           },
           body: JSON.stringify({
             model: MODEL_NAME,
-            max_tokens: 4096,
-            system: SYSTEM_PROMPT,
+            max_tokens: 8192,
+            temperature: 0,
+            system: STRUCTURED_SYSTEM_PROMPT,
+            tools: [AGENT_OUTPUT_TOOL],
+            tool_choice: {
+              type: "tool",
+              name: AGENT_OUTPUT_TOOL_NAME
+            },
             messages: [
               {
                 role: "user",
                 content:
                   "Process this learner question using only the linked approved context below. " +
-                  "Prepare the human-review output; do not publish anything.\n\n" +
+                  "Prepare the human-review output through the required tool; do not publish anything.\n\n" +
                   JSON.stringify(context, null, 2)
               }
             ]
@@ -1880,14 +1960,26 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
           return;
         }
 
+        const structuredAgentBlock = responseData?.content
+          ?.find((block) =>
+            block.type === "tool_use" && block.name === AGENT_OUTPUT_TOOL_NAME
+          );
         const rawAgentText = responseData?.content
           ?.filter((block) => block.type === "text")
           .map((block) => block.text)
           .join("\n\n")
           .trim();
 
-        if (rawAgentText) {
+        if (structuredAgentBlock?.input) {
+          renderAgentOutput(rawAgentText, responseElements, structuredAgentBlock.input);
+        } else if (rawAgentText) {
           renderAgentOutput(rawAgentText, responseElements);
+        } else if (responseData?.stop_reason === "max_tokens") {
+          rawOutput.textContent =
+            "The agent response was incomplete. Run the question again.";
+          rawOutput.classList.add("run-error");
+          setCaseOutcome(responseElements, "Incomplete response", "danger");
+          recordRunLog(question.question_id, "INCOMPLETE_RESPONSE", "Human action unavailable");
         } else {
           rawOutput.textContent = "The agent returned no readable text. Try the case again.";
           rawOutput.classList.add("run-error");
@@ -2421,7 +2513,7 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
         responseRegion.hidden = true;
         responseRegion.setAttribute("aria-live", "polite");
         responseHeading.textContent = `Agent output for ${question.question_id}`;
-        formatNotice.textContent = "agent output did not match format";
+        formatNotice.textContent = "Agent response could not be validated";
         formatNotice.hidden = true;
         structuredOutput.hidden = true;
         responseRegion.append(
