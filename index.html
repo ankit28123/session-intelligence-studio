@@ -676,17 +676,21 @@ Stop drafting a publishable answer, state the reason, preserve a non-published s
 
 For uncertain cluster membership alone, do not merge. Continue question-specific retrieval only if the uncertainty does not affect answerability or evidence selection.`;
 
-    const STRUCTURED_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
+    const STRUCTURED_SYSTEM_PROMPT_TEMPLATE = SYSTEM_PROMPT.replace(
       /\nOUTPUT\n[\s\S]*?\nESCALATION\n/,
       String.raw`
 STRUCTURED RESPONSE CONTRACT â€” MANDATORY
 - Return the complete result only by calling the submit_question_review tool supplied with the request. Do not return ordinary prose before or after the tool call.
-- Populate every tool field. Use NONE when a field does not apply; never omit a field and never replace a group of fields with "Not applicable."
+- The tool accepts one ordered field_values array. Supply exactly one string value for each field in the numbered list below, in that exact order.
+- Use NONE when a field does not apply; never omit a position and never replace a group of values with "Not applicable."
 - The WHY field must be one short reason naming the exact question/data record or source passage used and the exact policy section applied.
 - RESULT_STATUS must be exactly OK when a grounded draft can proceed to human review, or REFUSED-ESCALATE when the request must be refused and routed to a human.
 - AVAILABLE_REVIEWER_ACTIONS must be exactly Approve | Edit | Escalate. These are human actions; the agent must never select one itself.
 - For a nonexistent cluster, use NONE for cluster text fields and 0 for QUESTION_COUNT, ANSWERED_COUNT, PENDING_COUNT, and ESCALATED_COUNT.
 - Before calling the tool, verify that all required fields are present, all citations use exact filename#ID references, and the cluster counts balance.
+
+FIELD_VALUE ORDER — EXACTLY {{REQUIRED_FIELD_COUNT}} STRINGS
+{{REQUIRED_FIELD_NAMES}}
 
 ESCALATION RULES
 `
@@ -760,33 +764,33 @@ ESCALATION RULES
       OUTPUT_SECTIONS.flatMap((section) => section.fields)
     );
 
+    const STRUCTURED_SYSTEM_PROMPT = STRUCTURED_SYSTEM_PROMPT_TEMPLATE
+      .replace("{{REQUIRED_FIELD_COUNT}}", String(REQUIRED_OUTPUT_FIELDS.length))
+      .replace(
+        "{{REQUIRED_FIELD_NAMES}}",
+        REQUIRED_OUTPUT_FIELDS.map((field, index) => `${index + 1}. ${field}`).join("\n")
+      );
+
     const AGENT_OUTPUT_TOOL_NAME = "submit_question_review";
     const AGENT_OUTPUT_TOOL = Object.freeze({
       name: AGENT_OUTPUT_TOOL_NAME,
       description:
-        "Submit the complete grounded question-review result for deterministic rendering and human review.",
+        "Submit the complete grounded question-review result as an ordered array for deterministic rendering and human review.",
       strict: true,
       input_schema: {
         type: "object",
         additionalProperties: false,
-        properties: Object.fromEntries(REQUIRED_OUTPUT_FIELDS.map((field) => {
-          const property = { type: "string" };
-
-          if (field === "RESULT_STATUS") {
-            property.enum = ["OK", "REFUSED-ESCALATE"];
-          } else if (field === "AVAILABLE_REVIEWER_ACTIONS") {
-            property.enum = ["Approve | Edit | Escalate"];
-          } else if (field === "ESCALATION_STATUS") {
-            property.enum = ["NOT_ESCALATED", "ESCALATED"];
-          } else if (field === "APPROVAL_STATUS") {
-            property.enum = ["PENDING_HUMAN_REVIEW", "NOT_APPROVED"];
-          } else if (field === "PUBLICATION_STATUS") {
-            property.enum = ["NOT_PUBLISHED"];
+        properties: {
+          field_values: {
+            type: "array",
+            description:
+              "Exactly one string for every required output field, in the numbered order supplied in the system instructions. Do not omit positions.",
+            items: { type: "string" },
+            minItems: REQUIRED_OUTPUT_FIELDS.length,
+            maxItems: REQUIRED_OUTPUT_FIELDS.length
           }
-
-          return [field, property];
-        })),
-        required: [...REQUIRED_OUTPUT_FIELDS]
+        },
+        required: ["field_values"]
       }
     });
 
@@ -1370,12 +1374,21 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
       const recognizedSections = new Set(OUTPUT_SECTIONS.map((section) => section.key));
       const fieldLines = Object.create(null);
       let currentField = null;
+      const orderedStructuredValues = Array.isArray(structuredInput?.field_values)
+        ? structuredInput.field_values
+        : null;
       const hasStructuredInput = Boolean(
         structuredInput && typeof structuredInput === "object" && !Array.isArray(structuredInput)
       );
       let values = {};
 
-      if (hasStructuredInput) {
+      if (orderedStructuredValues) {
+        values = Object.fromEntries(REQUIRED_OUTPUT_FIELDS.map((field, index) => {
+          const value = orderedStructuredValues[index];
+          if (value == null) return [field, ""];
+          return [field, String(value).trim()];
+        }));
+      } else if (hasStructuredInput) {
         values = Object.fromEntries(REQUIRED_OUTPUT_FIELDS.map((field) => {
           const value = structuredInput[field];
           if (value == null) return [field, ""];
