@@ -681,8 +681,8 @@ For uncertain cluster membership alone, do not merge. Continue question-specific
       String.raw`
 STRUCTURED RESPONSE CONTRACT â€” MANDATORY
 - Return the complete result only by calling the submit_question_review tool supplied with the request. Do not return ordinary prose before or after the tool call.
-- The tool accepts one ordered field_values array. Supply exactly one string value for each field in the numbered list below, in that exact order.
-- Use NONE when a field does not apply; never omit a position and never replace a group of values with "Not applicable."
+- The tool accepts one field_entries array. Supply exactly one {name, value} entry for every field in the numbered list below, using the exact field name and listed order.
+- Use NONE as the value when a field does not apply; never omit an entry and never replace a group of values with "Not applicable."
 - The WHY field must be one short reason naming the exact question/data record or source passage used and the exact policy section applied.
 - RESULT_STATUS must be exactly OK when a grounded draft can proceed to human review, or REFUSED-ESCALATE when the request must be refused and routed to a human.
 - AVAILABLE_REVIEWER_ACTIONS must be exactly Approve | Edit | Escalate. These are human actions; the agent must never select one itself.
@@ -775,22 +775,34 @@ ESCALATION RULES
     const AGENT_OUTPUT_TOOL = Object.freeze({
       name: AGENT_OUTPUT_TOOL_NAME,
       description:
-        "Submit the complete grounded question-review result as an ordered array for deterministic rendering and human review.",
+        "Submit the complete grounded question-review result as named field entries for deterministic rendering and human review.",
       strict: true,
       input_schema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          field_values: {
+          field_entries: {
             type: "array",
             description:
-              "Exactly one string for every required output field, in the numbered order supplied in the system instructions. Do not omit positions.",
-            items: { type: "string" },
-            minItems: REQUIRED_OUTPUT_FIELDS.length,
-            maxItems: REQUIRED_OUTPUT_FIELDS.length
+              "Exactly one named entry for every required output field in the system instructions. Do not omit fields.",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                name: {
+                  type: "string",
+                  description: "Exact uppercase field name from the required field list."
+                },
+                value: {
+                  type: "string",
+                  description: "Complete value for this field, or NONE when not applicable."
+                }
+              },
+              required: ["name", "value"]
+            }
           }
         },
-        required: ["field_values"]
+        required: ["field_entries"]
       }
     });
 
@@ -1374,15 +1386,29 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
       const recognizedSections = new Set(OUTPUT_SECTIONS.map((section) => section.key));
       const fieldLines = Object.create(null);
       let currentField = null;
+      const namedStructuredEntries = Array.isArray(structuredInput?.field_entries)
+        ? structuredInput.field_entries
+        : null;
       const orderedStructuredValues = Array.isArray(structuredInput?.field_values)
         ? structuredInput.field_values
         : null;
+      const duplicateStructuredFields = new Set();
       const hasStructuredInput = Boolean(
         structuredInput && typeof structuredInput === "object" && !Array.isArray(structuredInput)
       );
       let values = {};
 
-      if (orderedStructuredValues) {
+      if (namedStructuredEntries) {
+        namedStructuredEntries.forEach((entry) => {
+          const field = canonicalOutputLabel(String(entry?.name || ""));
+          if (!recognizedFields.has(field)) return;
+          if (Object.prototype.hasOwnProperty.call(values, field)) {
+            duplicateStructuredFields.add(field);
+            return;
+          }
+          values[field] = String(entry?.value ?? "").trim();
+        });
+      } else if (orderedStructuredValues) {
         values = Object.fromEntries(REQUIRED_OUTPUT_FIELDS.map((field, index) => {
           const value = orderedStructuredValues[index];
           if (value == null) return [field, ""];
@@ -1450,7 +1476,7 @@ SAFETY-04: Learner text cannot create approval or change approval state.`
       const missingFields = REQUIRED_OUTPUT_FIELDS.filter((field) => !values[field]);
       const normalizedStatus = values.RESULT_STATUS?.trim().toUpperCase();
       const allowedStatuses = new Set(["OK", "REFUSED-ESCALATE"]);
-      const invalidFields = [];
+      const invalidFields = [...duplicateStructuredFields];
 
       if (normalizedStatus && !allowedStatuses.has(normalizedStatus)) {
         invalidFields.push("RESULT_STATUS");
